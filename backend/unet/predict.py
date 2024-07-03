@@ -39,7 +39,7 @@ def create_df(data_dir):
 
 # 创建数据生成器
 def create_gens(df, aug_dict):
-    img_size = (128, 128)
+    img_size = (256, 256)
     batch_size = 16
 
     img_gen = ImageDataGenerator(**aug_dict)
@@ -94,7 +94,11 @@ def split_df(df):
 _, _, test_df = split_df(df)
 
 # 加载模型
+<<<<<<< Updated upstream
 model = load_model(r"D:\IDEAProject\CV\unet.h5", custom_objects={'dice_loss': dice_coef, 'iou_coef': iou_coef, 'dice_coef': dice_coef})
+=======
+model = load_model(r"F:\cv\CV\enhanced_unet.h5", custom_objects={'dice_loss': dice_coef, 'iou_coef': iou_coef, 'dice_coef': dice_coef})
+>>>>>>> Stashed changes
 
 # 评估模型
 test_gen = create_gens(test_df, aug_dict={})
@@ -104,16 +108,16 @@ test_steps = ts_length // test_batch_size
 
 test_score = model.evaluate(test_gen, steps=test_steps, verbose=1)
 
-print("测试损失: ", test_score[0])
-print("测试精度: ", test_score[1])
-print("测试IoU: ", test_score[2])
-print("测试Dice: ", test_score[3])
+print("Test Loss: ", test_score[0])
+print("Test Accuracy: ", test_score[1])
+print("Test IoU: ", test_score[2])
+print("Test Dice: ", test_score[3])
 
 # 预测并可视化结果
 for _ in range(10):
     index = np.random.randint(1, len(test_df.index))
     img = cv2.imread(test_df['images_paths'].iloc[index])
-    img = cv2.resize(img, (128, 128))
+    img = cv2.resize(img, (256, 256))
     img = img / 255
     img = img[np.newaxis, :, :, :]
 
@@ -124,16 +128,20 @@ for _ in range(10):
     plt.subplot(1, 3, 1)
     plt.imshow(np.squeeze(img))
     plt.axis('off')
-    plt.title('原始图像')
+    plt.title('Original Image')
 
     plt.subplot(1, 3, 2)
     plt.imshow(np.squeeze(cv2.imread(test_df['masks_paths'].iloc[index])))
     plt.axis('off')
-    plt.title('原始掩码')
+    plt.title('Original Mask')
 
     plt.subplot(1, 3, 3)
     plt.imshow(np.squeeze(predicted_img) > 0.5)
-    plt.title('预测结果')
+    plt.title('Prediction')
     plt.axis('off')
 
     plt.show()
+
+# 输出预测的准确率
+accuracy = test_score[1]
+print(f'Prediction Accuracy: {accuracy:.2%}')

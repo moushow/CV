@@ -12,9 +12,10 @@ from sklearn.model_selection import train_test_split
 from keras.models import Model
 from keras.preprocessing.image import ImageDataGenerator
 from keras.optimizers import Adamax
-from keras.callbacks import ModelCheckpoint
-from keras.layers import Input, Activation, BatchNormalization, Conv2D, Conv2DTranspose, MaxPooling2D, concatenate
+from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau
+from keras.layers import Input, Activation, BatchNormalization, Conv2D, Conv2DTranspose, MaxPooling2D, Dropout, concatenate
 from keras import backend as K
+import tensorflow as tf
 
 # 忽略警告
 import warnings
@@ -41,7 +42,7 @@ def split_df(df):
 
 # 创建数据生成器
 def create_gens(df, aug_dict):
-    img_size = (128, 128)  # 降低图像分辨率
+    img_size = (256, 256)  # 降低图像分辨率
     batch_size = 16  # 保持批量大小
 
     img_gen = ImageDataGenerator(**aug_dict)
@@ -62,8 +63,8 @@ def create_gens(df, aug_dict):
 
         yield (img, msk)
 
-# 精简的 U-Net 模型
-def unet(input_size=(128, 128, 3)):
+# 改进的 U-Net 模型
+def enhanced_unet(input_size=(256, 256, 3)):
     inputs = Input(input_size)
 
     conv1 = Conv2D(filters=32, kernel_size=(3, 3), padding="same")(inputs)
@@ -72,6 +73,7 @@ def unet(input_size=(128, 128, 3)):
     bn1 = BatchNormalization(axis=3)(conv1)
     bn1 = Activation("relu")(bn1)
     pool1 = MaxPooling2D(pool_size=(2, 2))(bn1)
+    pool1 = Dropout(0.2)(pool1)  # 添加Dropout层
 
     conv2 = Conv2D(filters=64, kernel_size=(3, 3), padding="same")(pool1)
     bn2 = Activation("relu")(conv2)
@@ -79,6 +81,7 @@ def unet(input_size=(128, 128, 3)):
     bn2 = BatchNormalization(axis=3)(conv2)
     bn2 = Activation("relu")(bn2)
     pool2 = MaxPooling2D(pool_size=(2, 2))(bn2)
+    pool2 = Dropout(0.3)(pool2)  # 添加Dropout层
 
     conv3 = Conv2D(filters=128, kernel_size=(3, 3), padding="same")(pool2)
     bn3 = Activation("relu")(conv3)
@@ -86,12 +89,14 @@ def unet(input_size=(128, 128, 3)):
     bn3 = BatchNormalization(axis=3)(conv3)
     bn3 = Activation("relu")(bn3)
     pool3 = MaxPooling2D(pool_size=(2, 2))(bn3)
+    pool3 = Dropout(0.4)(pool3)  # 添加Dropout层
 
     conv4 = Conv2D(filters=256, kernel_size=(3, 3), padding="same")(pool3)
     bn4 = Activation("relu")(conv4)
     conv4 = Conv2D(filters=256, kernel_size=(3, 3), padding="same")(bn4)
     bn4 = BatchNormalization(axis=3)(conv4)
     bn4 = Activation("relu")(bn4)
+    bn4 = Dropout(0.5)(bn4)  # 添加Dropout层
 
     up5 = concatenate([Conv2DTranspose(128, kernel_size=(2, 2), strides=(2, 2), padding="same")(bn4), conv3], axis=3)
     conv5 = Conv2D(filters=128, kernel_size=(3, 3), padding="same")(up5)
@@ -163,11 +168,16 @@ def plot_training(hist):
     tr_iou = hist.history['iou_coef']
     tr_dice = hist.history['dice_coef']
     tr_loss = hist.history['loss']
+    tr_precision = hist.history['precision']
+    tr_recall = hist.history['recall']
 
     val_acc = hist.history['val_accuracy']
     val_iou = hist.history['val_iou_coef']
     val_dice = hist.history['val_dice_coef']
     val_loss = hist.history['val_loss']
+    val_precision = hist.history['val_precision']
+    val_recall = hist.history['val_recall']
+
     index_acc = np.argmax(val_acc)
     acc_highest = val_acc[index_acc]
     index_iou = np.argmax(val_iou)
@@ -176,6 +186,10 @@ def plot_training(hist):
     dice_highest = val_dice[index_dice]
     index_loss = np.argmin(val_loss)
     val_lowest = val_loss[index_loss]
+    index_precision = np.argmax(val_precision)
+    precision_highest = val_precision[index_precision]
+    index_recall = np.argmax(val_recall)
+    recall_highest = val_recall[index_recall]
 
     Epochs = [i+1 for i in range(len(tr_acc))]
 
@@ -183,10 +197,13 @@ def plot_training(hist):
     iou_label = f'Best epoch= {str(index_iou + 1)}'
     dice_label = f'Best epoch= {str(index_dice + 1)}'
     loss_label = f'Best epoch= {str(index_loss + 1)}'
+    precision_label = f'Best epoch= {str(index_precision + 1)}'
+    recall_label = f'Best epoch= {str(index_recall + 1)}'
+
     plt.figure(figsize=(20, 20))
     plt.style.use('fivethirtyeight')
 
-    plt.subplot(2, 2, 1)
+    plt.subplot(3, 2, 1)
     plt.plot(Epochs, tr_acc, 'r', label='Training Accuracy')
     plt.plot(Epochs, val_acc, 'g', label='Validation Accuracy')
     plt.scatter(index_acc + 1 , acc_highest, s=150, c='blue', label=acc_label)
@@ -195,7 +212,7 @@ def plot_training(hist):
     plt.ylabel('Accuracy')
     plt.legend()
 
-    plt.subplot(2, 2, 2)
+    plt.subplot(3, 2, 2)
     plt.plot(Epochs, tr_iou, 'r', label='Training IoU')
     plt.plot(Epochs, val_iou, 'g', label='Validation IoU')
     plt.scatter(index_iou + 1 , iou_highest, s=150, c='blue', label=iou_label)
@@ -204,7 +221,7 @@ def plot_training(hist):
     plt.ylabel('IoU')
     plt.legend()
 
-    plt.subplot(2, 2, 3)
+    plt.subplot(3, 2, 3)
     plt.plot(Epochs, tr_dice, 'r', label='Training Dice')
     plt.plot(Epochs, val_dice, 'g', label='Validation Dice')
     plt.scatter(index_dice + 1 , dice_highest, s=150, c='blue', label=dice_label)
@@ -213,13 +230,31 @@ def plot_training(hist):
     plt.ylabel('Dice')
     plt.legend()
 
-    plt.subplot(2, 2, 4)
+    plt.subplot(3, 2, 4)
     plt.plot(Epochs, tr_loss, 'r', label='Training Loss')
     plt.plot(Epochs, val_loss, 'g', label='Validation Loss')
     plt.scatter(index_loss + 1, val_lowest, s=150, c='blue', label=loss_label)
     plt.title('Training and Validation Loss')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
+    plt.legend()
+
+    plt.subplot(3, 2, 5)
+    plt.plot(Epochs, tr_precision, 'r', label='Training Precision')
+    plt.plot(Epochs, val_precision, 'g', label='Validation Precision')
+    plt.scatter(index_precision + 1, precision_highest, s=150, c='blue', label=precision_label)
+    plt.title('Training and Validation Precision')
+    plt.xlabel('Epochs')
+    plt.ylabel('Precision')
+    plt.legend()
+
+    plt.subplot(3, 2, 6)
+    plt.plot(Epochs, tr_recall, 'r', label='Training Recall')
+    plt.plot(Epochs, val_recall, 'g', label='Validation Recall')
+    plt.scatter(index_recall + 1, recall_highest, s=150, c='blue', label=recall_label)
+    plt.title('Training and Validation Recall')
+    plt.xlabel('Epochs')
+    plt.ylabel('Recall')
     plt.legend()
 
     plt.tight_layout()
@@ -230,13 +265,14 @@ data_dir = r"F:\BaiduNetdiskDownload\Brain MRI segmentation\Brain MRI segmentati
 df = create_df(data_dir)
 train_df, valid_df, test_df = split_df(df)
 
-tr_aug_dict = dict(rotation_range=0.2,
-                            width_shift_range=0.05,
-                            height_shift_range=0.05,
-                            shear_range=0.05,
-                            zoom_range=0.05,
-                            horizontal_flip=True,
-                            fill_mode='nearest')
+tr_aug_dict = dict(rotation_range=0.3,
+                   width_shift_range=0.1,
+                   height_shift_range=0.1,
+                   shear_range=0.1,
+                   zoom_range=0.1,
+                   horizontal_flip=True,
+                   vertical_flip=True,
+                   fill_mode='reflect')
 
 train_gen = create_gens(train_df, aug_dict=tr_aug_dict)
 valid_gen = create_gens(valid_df, aug_dict={})
@@ -244,14 +280,18 @@ test_gen = create_gens(test_df, aug_dict={})
 
 show_images(list(train_df['images_paths']), list(train_df['masks_paths']))
 
-model = unet()
-model.compile(Adamax(learning_rate=0.001), loss=dice_loss, metrics=['accuracy', iou_coef, dice_coef])
+model = enhanced_unet()
+model.compile(Adamax(learning_rate=0.001), loss=dice_loss, metrics=['accuracy', iou_coef, dice_coef, tf.keras.metrics.Precision(name='precision'), tf.keras.metrics.Recall(name='recall')])
 
 model.summary()
 
 epochs = 30  # 调整训练轮数
 batch_size = 16  # 保持批量大小
-callbacks = [ModelCheckpoint('unet.h5', verbose=0, save_best_only=True), TqdmCallback()]
+callbacks = [
+    ModelCheckpoint('enhanced_unet.h5', verbose=1, save_best_only=True),
+    ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=5, verbose=1, min_lr=1e-6),
+    TqdmCallback()
+]
 
 history = model.fit(train_gen,
                     steps_per_epoch=len(train_df) / batch_size,
@@ -275,32 +315,39 @@ print("Train Loss: ", train_score[0])
 print("Train Accuracy: ", train_score[1])
 print("Train IoU: ", train_score[2])
 print("Train Dice: ", train_score[3])
+print("Train Precision: ", train_score[4])
+print("Train Recall: ", train_score[5])
 print('-' * 20)
 
 print("Validation Loss: ", valid_score[0])
 print("Validation Accuracy: ", valid_score[1])
 print("Validation IoU: ", valid_score[2])
 print("Validation Dice: ", valid_score[3])
+print("Validation Precision: ", valid_score[4])
+print("Validation Recall: ", valid_score[5])
 print('-' * 20)
 
 print("Test Loss: ", test_score[0])
 print("Test Accuracy: ", test_score[1])
 print("Test IoU: ", test_score[2])
 print("Test Dice: ", test_score[3])
+print("Test Precision: ", test_score[4])
+print("Test Recall: ", test_score[5])
 
+# 在图片上显示评估指标
 for _ in range(10):  # 减少预测显示的图像数量
     index = np.random.randint(1, len(test_df.index))
     img = cv2.imread(test_df['images_paths'].iloc[index])
-    img = cv2.resize(img, (128, 128))
-    img = img / 255
-    img = img[np.newaxis, :, :, :]
+    img_resized = cv2.resize(img, (128, 128))
+    img_norm = img_resized / 255
+    img_norm = img_norm[np.newaxis, :, :, :]
 
-    predicted_img = model.predict(img)
+    predicted_img = model.predict(img_norm)
 
     plt.figure(figsize=(12, 12))
     
     plt.subplot(1, 3, 1)
-    plt.imshow(np.squeeze(img))
+    plt.imshow(np.squeeze(img_resized))
     plt.axis('off')
     plt.title('Original Image')
 
@@ -314,4 +361,12 @@ for _ in range(10):  # 减少预测显示的图像数量
     plt.title('Prediction')
     plt.axis('off')
     
+    # 在图片上显示评估指标
+    plt.text(10, 10, f"Loss: {test_score[0]:.4f}", color='white', fontsize=12, backgroundcolor='black')
+    plt.text(10, 30, f"Accuracy: {test_score[1]:.4f}", color='white', fontsize=12, backgroundcolor='black')
+    plt.text(10, 50, f"IoU: {test_score[2]:.4f}", color='white', fontsize=12, backgroundcolor='black')
+    plt.text(10, 70, f"Dice: {test_score[3]:.4f}", color='white', fontsize=12, backgroundcolor='black')
+    plt.text(10, 90, f"Precision: {test_score[4]:.4f}", color='white', fontsize=12, backgroundcolor='black')
+    plt.text(10, 110, f"Recall: {test_score[5]:.4f}", color='white', fontsize=12, backgroundcolor='black')
+
     plt.show()
