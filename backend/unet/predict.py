@@ -81,7 +81,7 @@ def show_images(images, masks):
     plt.show()
 
 # 加载数据集
-data_dir = r"F:\BaiduNetdiskDownload\Brain MRI segmentation\Brain MRI segmentation"
+data_dir = r"C:\Users\Lenovo\Desktop\Brain MRI segmentation"
 
 df = create_df(data_dir)
 
@@ -94,7 +94,7 @@ def split_df(df):
 _, _, test_df = split_df(df)
 
 # 加载模型
-model = load_model(r"F:\cv\CV\unet.h5", custom_objects={'dice_loss': dice_coef, 'iou_coef': iou_coef, 'dice_coef': dice_coef})
+model = load_model(r"D:\IDEAProject\CV\unet.h5", custom_objects={'dice_loss': dice_coef, 'iou_coef': iou_coef, 'dice_coef': dice_coef})
 
 # 评估模型
 test_gen = create_gens(test_df, aug_dict={})
@@ -120,7 +120,7 @@ for _ in range(10):
     predicted_img = model.predict(img)
 
     plt.figure(figsize=(12, 12))
-    
+
     plt.subplot(1, 3, 1)
     plt.imshow(np.squeeze(img))
     plt.axis('off')
@@ -135,5 +135,5 @@ for _ in range(10):
     plt.imshow(np.squeeze(predicted_img) > 0.5)
     plt.title('预测结果')
     plt.axis('off')
-    
+
     plt.show()
