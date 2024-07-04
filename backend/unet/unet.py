@@ -36,8 +36,8 @@ def create_df(data_dir):
 
 # 分割数据框
 def split_df(df):
-    train_df, dummy_df = train_test_split(df, train_size=0.6)
-    valid_df, test_df = train_test_split(dummy_df, train_size=0.5)
+    train_df, dummy_df = train_test_split(df, train_size=0.6, random_state=42)
+    valid_df, test_df = train_test_split(dummy_df, train_size=0.5, random_state=42)
     return train_df, valid_df, test_df
 
 # 创建数据生成器
@@ -63,7 +63,7 @@ def create_gens(df, aug_dict):
 
         yield (img, msk)
 
-# 改进的 U-Net 模型
+# 恢复复杂度的 U-Net 模型
 def enhanced_unet(input_size=(256, 256, 3)):
     inputs = Input(input_size)
 
@@ -73,7 +73,7 @@ def enhanced_unet(input_size=(256, 256, 3)):
     bn1 = BatchNormalization(axis=3)(conv1)
     bn1 = Activation("relu")(bn1)
     pool1 = MaxPooling2D(pool_size=(2, 2))(bn1)
-    pool1 = Dropout(0.2)(pool1)  # 添加Dropout层
+    pool1 = Dropout(0.2)(pool1)
 
     conv2 = Conv2D(filters=64, kernel_size=(3, 3), padding="same")(pool1)
     bn2 = Activation("relu")(conv2)
@@ -81,7 +81,7 @@ def enhanced_unet(input_size=(256, 256, 3)):
     bn2 = BatchNormalization(axis=3)(conv2)
     bn2 = Activation("relu")(bn2)
     pool2 = MaxPooling2D(pool_size=(2, 2))(bn2)
-    pool2 = Dropout(0.3)(pool2)  # 添加Dropout层
+    pool2 = Dropout(0.3)(pool2)
 
     conv3 = Conv2D(filters=128, kernel_size=(3, 3), padding="same")(pool2)
     bn3 = Activation("relu")(conv3)
@@ -89,14 +89,14 @@ def enhanced_unet(input_size=(256, 256, 3)):
     bn3 = BatchNormalization(axis=3)(conv3)
     bn3 = Activation("relu")(bn3)
     pool3 = MaxPooling2D(pool_size=(2, 2))(bn3)
-    pool3 = Dropout(0.4)(pool3)  # 添加Dropout层
+    pool3 = Dropout(0.4)(pool3)
 
     conv4 = Conv2D(filters=256, kernel_size=(3, 3), padding="same")(pool3)
     bn4 = Activation("relu")(conv4)
     conv4 = Conv2D(filters=256, kernel_size=(3, 3), padding="same")(bn4)
     bn4 = BatchNormalization(axis=3)(conv4)
     bn4 = Activation("relu")(bn4)
-    bn4 = Dropout(0.5)(bn4)  # 添加Dropout层
+    bn4 = Dropout(0.5)(bn4)
 
     up5 = concatenate([Conv2DTranspose(128, kernel_size=(2, 2), strides=(2, 2), padding="same")(bn4), conv3], axis=3)
     conv5 = Conv2D(filters=128, kernel_size=(3, 3), padding="same")(up5)
@@ -141,6 +141,10 @@ def iou_coef(y_true, y_pred, smooth=100):
     sum = K.sum(y_true + y_pred)
     iou = (intersection + smooth) / (sum - intersection + smooth)
     return iou
+
+# calc_loss 计算
+def calc_loss(y_true, y_pred):
+    return tf.keras.losses.binary_crossentropy(y_true, y_pred)
 
 # 显示图像
 def show_images(images, masks):
@@ -191,7 +195,7 @@ def plot_training(hist):
     index_recall = np.argmax(val_recall)
     recall_highest = val_recall[index_recall]
 
-    Epochs = [i+1 for i in range(len(tr_acc))]
+    Epochs = [i + 1 for i in range(len(tr_acc))]
 
     acc_label = f'Best epoch= {str(index_acc + 1)}'
     iou_label = f'Best epoch= {str(index_iou + 1)}'
@@ -206,7 +210,7 @@ def plot_training(hist):
     plt.subplot(3, 2, 1)
     plt.plot(Epochs, tr_acc, 'r', label='Training Accuracy')
     plt.plot(Epochs, val_acc, 'g', label='Validation Accuracy')
-    plt.scatter(index_acc + 1 , acc_highest, s=150, c='blue', label=acc_label)
+    plt.scatter(index_acc + 1, acc_highest, s=150, c='blue', label=acc_label)
     plt.title('Training and Validation Accuracy')
     plt.xlabel('Epochs')
     plt.ylabel('Accuracy')
@@ -215,7 +219,7 @@ def plot_training(hist):
     plt.subplot(3, 2, 2)
     plt.plot(Epochs, tr_iou, 'r', label='Training IoU')
     plt.plot(Epochs, val_iou, 'g', label='Validation IoU')
-    plt.scatter(index_iou + 1 , iou_highest, s=150, c='blue', label=iou_label)
+    plt.scatter(index_iou + 1, iou_highest, s=150, c='blue', label=iou_label)
     plt.title('Training and Validation IoU Coefficient')
     plt.xlabel('Epochs')
     plt.ylabel('IoU')
@@ -224,7 +228,7 @@ def plot_training(hist):
     plt.subplot(3, 2, 3)
     plt.plot(Epochs, tr_dice, 'r', label='Training Dice')
     plt.plot(Epochs, val_dice, 'g', label='Validation Dice')
-    plt.scatter(index_dice + 1 , dice_highest, s=150, c='blue', label=dice_label)
+    plt.scatter(index_dice + 1, dice_highest, s=150, c='blue', label=dice_label)
     plt.title('Training and Validation Dice Coefficient')
     plt.xlabel('Epochs')
     plt.ylabel('Dice')
@@ -281,7 +285,7 @@ test_gen = create_gens(test_df, aug_dict={})
 show_images(list(train_df['images_paths']), list(train_df['masks_paths']))
 
 model = enhanced_unet()
-model.compile(Adamax(learning_rate=0.001), loss=dice_loss, metrics=['accuracy', iou_coef, dice_coef, tf.keras.metrics.Precision(name='precision'), tf.keras.metrics.Recall(name='recall')])
+model.compile(Adamax(learning_rate=0.001), loss=dice_loss, metrics=['accuracy', iou_coef, dice_coef, calc_loss, tf.keras.metrics.Precision(name='precision'), tf.keras.metrics.Recall(name='recall')])
 
 model.summary()
 
@@ -304,7 +308,7 @@ history = model.fit(train_gen,
 plot_training(history)
 
 ts_length = len(test_df)
-test_batch_size = max(sorted([ts_length // n for n in range(1, ts_length + 1) if ts_length%n == 0 and ts_length/n <= 80]))
+test_batch_size = max(sorted([ts_length // n for n in range(1, ts_length + 1) if ts_length % n == 0 and ts_length / n <= 80]))
 test_steps = ts_length // test_batch_size
 
 train_score = model.evaluate(train_gen, steps=test_steps, verbose=1)
@@ -315,30 +319,33 @@ print("Train Loss: ", train_score[0])
 print("Train Accuracy: ", train_score[1])
 print("Train IoU: ", train_score[2])
 print("Train Dice: ", train_score[3])
-print("Train Precision: ", train_score[4])
-print("Train Recall: ", train_score[5])
+print("Train Calc Loss: ", train_score[4])
+print("Train Precision: ", train_score[5])
+print("Train Recall: ", train_score[6])
 print('-' * 20)
 
 print("Validation Loss: ", valid_score[0])
 print("Validation Accuracy: ", valid_score[1])
 print("Validation IoU: ", valid_score[2])
 print("Validation Dice: ", valid_score[3])
-print("Validation Precision: ", valid_score[4])
-print("Validation Recall: ", valid_score[5])
+print("Validation Calc Loss: ", valid_score[4])
+print("Validation Precision: ", valid_score[5])
+print("Validation Recall: ", valid_score[6])
 print('-' * 20)
 
 print("Test Loss: ", test_score[0])
 print("Test Accuracy: ", test_score[1])
 print("Test IoU: ", test_score[2])
 print("Test Dice: ", test_score[3])
-print("Test Precision: ", test_score[4])
-print("Test Recall: ", test_score[5])
+print("Test Calc Loss: ", test_score[4])
+print("Test Precision: ", test_score[5])
+print("Test Recall: ", test_score[6])
 
 # 在图片上显示评估指标
 for _ in range(10):  # 减少预测显示的图像数量
     index = np.random.randint(1, len(test_df.index))
     img = cv2.imread(test_df['images_paths'].iloc[index])
-    img_resized = cv2.resize(img, (128, 128))
+    img_resized = cv2.resize(img, (256, 256))
     img_norm = img_resized / 255
     img_norm = img_norm[np.newaxis, :, :, :]
 
@@ -366,7 +373,8 @@ for _ in range(10):  # 减少预测显示的图像数量
     plt.text(10, 30, f"Accuracy: {test_score[1]:.4f}", color='white', fontsize=12, backgroundcolor='black')
     plt.text(10, 50, f"IoU: {test_score[2]:.4f}", color='white', fontsize=12, backgroundcolor='black')
     plt.text(10, 70, f"Dice: {test_score[3]:.4f}", color='white', fontsize=12, backgroundcolor='black')
-    plt.text(10, 90, f"Precision: {test_score[4]:.4f}", color='white', fontsize=12, backgroundcolor='black')
-    plt.text(10, 110, f"Recall: {test_score[5]:.4f}", color='white', fontsize=12, backgroundcolor='black')
+    plt.text(10, 90, f"Calc Loss: {test_score[4]:.4f}", color='white', fontsize=12, backgroundcolor='black')
+    plt.text(10, 110, f"Precision: {test_score[5]:.4f}", color='white', fontsize=12, backgroundcolor='black')
+    plt.text(10, 130, f"Recall: {test_score[6]:.4f}", color='white', fontsize=12, backgroundcolor='black')
 
     plt.show()

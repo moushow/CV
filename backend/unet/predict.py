@@ -81,7 +81,7 @@ def show_images(images, masks):
     plt.show()
 
 # 加载数据集
-data_dir = r"C:\Users\Lenovo\Desktop\Brain MRI segmentation"
+data_dir = r"F:\BaiduNetdiskDownload\Brain MRI segmentation\Brain MRI segmentation"
 
 df = create_df(data_dir)
 
@@ -94,11 +94,7 @@ def split_df(df):
 _, _, test_df = split_df(df)
 
 # 加载模型
-<<<<<<< Updated upstream
-model = load_model(r"D:\IDEAProject\CV\unet.h5", custom_objects={'dice_loss': dice_coef, 'iou_coef': iou_coef, 'dice_coef': dice_coef})
-=======
 model = load_model(r"F:\cv\CV\enhanced_unet.h5", custom_objects={'dice_loss': dice_coef, 'iou_coef': iou_coef, 'dice_coef': dice_coef})
->>>>>>> Stashed changes
 
 # 评估模型
 test_gen = create_gens(test_df, aug_dict={})
@@ -112,6 +108,93 @@ print("Test Loss: ", test_score[0])
 print("Test Accuracy: ", test_score[1])
 print("Test IoU: ", test_score[2])
 print("Test Dice: ", test_score[3])
+
+# 定义 dsc_per_volume 函数
+def dsc_per_volume(validation_pred, validation_true, patient_slice_index):
+    def dsc(y_pred, y_true, smooth=100):
+        y_pred_flatten = y_pred.flatten()
+        y_true_flatten = y_true.flatten()
+        intersection = np.sum(y_pred_flatten * y_true_flatten)
+        union = np.sum(y_pred_flatten) + np.sum(y_true_flatten)
+        return (2 * intersection + smooth) / (union + smooth)
+
+    dsc_list = []
+    num_slices = np.bincount([p[0] for p in patient_slice_index])
+    index = 0
+    for p in range(len(num_slices)):
+        y_pred = np.array(validation_pred[index: index + num_slices[p]])
+        y_true = np.array(validation_true[index: index + num_slices[p]])
+        dsc_value = dsc(y_pred, y_true)
+        print(f'Volume {p}: DSC = {dsc_value}')  # 输出每个体积的 DSC
+        dsc_list.append(dsc_value)
+        index += num_slices[p]
+    return dsc_list
+
+# 预测并收集结果
+validation_pred = []
+validation_true = []
+patient_slice_index = []
+
+for i, (img, mask) in enumerate(create_gens(test_df, aug_dict={})):
+    if i >= test_steps:
+        break
+    preds = model.predict(img)
+    validation_pred.extend(preds)
+    validation_true.extend(mask)
+    patient_slice_index.extend([(i, j) for j in range(mask.shape[0])])
+
+# 调试输出，检查收集的数据
+print(f'Collected {len(validation_pred)} predictions and {len(validation_true)} true masks.')
+
+# 调试输出，检查每个体积的第一个预测和真实掩码
+for i in range(5):  # 只检查前5个
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1)
+    plt.imshow(np.squeeze(validation_pred[i]), cmap='gray')
+    plt.title(f'Predicted Volume {i}')
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(np.squeeze(validation_true[i]), cmap='gray')
+    plt.title(f'True Volume {i}')
+    plt.axis('off')
+    plt.show()
+
+# 计算每个体积的 DSC
+dsc_scores = dsc_per_volume(validation_pred, validation_true, patient_slice_index)
+
+print(f'DSC per volume: {dsc_scores}')
+print(f'Average DSC: {np.mean(dsc_scores):.4f}')
+
+# 绘制 DSC 每体积的条形图
+volume_labels = test_df['images_paths'].apply(lambda x: os.path.basename(os.path.dirname(x))).unique()
+dsc_scores = dsc_scores[:len(volume_labels)]
+
+# 计算平均 DSC
+average_dsc = np.mean(dsc_scores)
+
+# 绘制条形图
+plt.figure(figsize=(12, 8))
+bars = plt.barh(volume_labels, dsc_scores, color='skyblue')
+
+# 添加平均值线
+plt.axvline(x=average_dsc, color='red', linewidth=2, label=f'Average DSC = {average_dsc:.2f}')
+plt.legend()
+
+# 设置标签和标题
+plt.xlabel('Dice Coefficient')
+plt.ylabel('Volumes')
+plt.title('Dice Coefficient per Volume')
+
+# 添加每个条形的值标签
+for bar in bars:
+    width = bar.get_width()
+    plt.text(width, bar.get_y() + bar.get_height()/2, f'{width:.2f}', 
+             ha='center', va='center')
+
+# 显示图像
+plt.tight_layout()
+plt.show()
 
 # 预测并可视化结果
 for _ in range(10):

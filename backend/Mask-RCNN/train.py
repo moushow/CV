@@ -1,5 +1,4 @@
 import os
-
 import albumentations as A
 import numpy as np
 import torch
@@ -12,7 +11,6 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
 # 禁用 albumentations 版本检查
 os.environ["ALBUMENTATIONS_DISABLE_VERSION_CHECK"] = "1"
-
 
 class BrainMRIDataset(Dataset):
     def __init__(self, data_dir, transforms=None):
@@ -55,6 +53,7 @@ class BrainMRIDataset(Dataset):
         target = {}
         target["masks"] = mask.unsqueeze(0)
         target["boxes"] = self.get_bounding_box(mask)
+        target["labels"] = torch.tensor([1], dtype=torch.int64)  # 添加标签，假设所有的目标标签都是1
 
         return image, target
 
@@ -65,7 +64,6 @@ class BrainMRIDataset(Dataset):
         ymin = np.min(pos[0])
         ymax = np.max(pos[0])
         return torch.tensor([[xmin, ymin, xmax, ymax]], dtype=torch.float32)
-
 
 def get_transforms(train=True):
     if train:
@@ -82,10 +80,8 @@ def get_transforms(train=True):
             ToTensorV2(),
         ])
 
-
 def collate_fn(batch):
     return tuple(zip(*batch))
-
 
 def get_instance_segmentation_model(num_classes):
     model = maskrcnn_resnet50_fpn(pretrained=True)
@@ -97,7 +93,6 @@ def get_instance_segmentation_model(num_classes):
     model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask, hidden_layer, num_classes)
 
     return model
-
 
 def evaluate_model(model, data_loader, device):
     model.eval()
@@ -120,14 +115,16 @@ def evaluate_model(model, data_loader, device):
 
     print(f"Average IOU: {sum(metric_logger) / len(metric_logger):.4f}")
 
-
 def main():
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     num_classes = 2
-    data_dir = "D:\\IDEAProject\\CV\\backend\\Brain MRI segmentation\\TCGA_CS_4941_19960909"
+    data_dir = r"F:\BaiduNetdiskDownload\Brain MRI segmentation\Brain MRI segmentation\TCGA_CS_4941_19960909"
 
     dataset = BrainMRIDataset(data_dir=data_dir, transforms=get_transforms(train=True))
+    if len(dataset) == 0:
+           raise ValueError("Dataset is empty. Check the dataset path and ensure there are valid images and masks.")
+
     data_loader = DataLoader(dataset, batch_size=2, shuffle=True, num_workers=4, collate_fn=collate_fn)
 
     model = get_instance_segmentation_model(num_classes)
@@ -155,7 +152,6 @@ def main():
 
     # Evaluate the model
     evaluate_model(model, data_loader, device)
-
 
 if __name__ == "__main__":
     main()
